@@ -1,0 +1,30 @@
+/* --- DATABASE TABLE STYLES --- */
+.table-container {
+  padding: 20px;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+th,
+td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+th {
+  background-color: var(--input-bg);
+  color: #bbb;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+tr:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}

@@ -1,0 +1,64 @@
+/* --- FORM & BUTTONS --- */
+.chat-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border-top: 1px solid var(--border-color);
+  background-color: var(--panel-bg);
+}
+
+#chat-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--input-bg);
+  color: var(--text-main);
+  font-size: 1rem;
+}
+
+#chat-input:focus {
+  outline: none;
+  border-color: var(--user-msg);
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background-color: #555;
+  color: #fff;
+  font-weight: bold;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+}
+
+.btn:hover {
+  opacity: 0.8;
+}
+
+.btn:disabled,
+#chat-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-error {
+  color: #ff6b6b;
+  text-align: center;
+  margin: 0;
+  padding-bottom: 10px;
+  font-size: 0.9rem;
+}
