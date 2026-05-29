@@ -1,7 +1,6 @@
 import "./style.css";
 import hljs from "highlight.js";
 import "highlight.js/styles/github-dark.css";
-
 import { initTelemetry } from "./telemetry.js";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
@@ -32,14 +31,11 @@ root.innerHTML = `
           id="chat-input"
           type="text"
           name="message"
-          placeholder="Type a message (e.g., 'I drank 500ml water')..."
+          placeholder="Log food, ask for a summary, or ask for help..."
           required
           aria-label="Message"
         />
-        <div class="button-group">
-          <button id="btn-query" type="submit" value="query" class="btn">Query DB</button>
-          <button id="btn-database" type="submit" value="database" class="btn btn-primary">Log to DB</button>
-        </div>
+        <button id="chat-send" type="submit" class="btn btn-primary">Send</button>
       </form>
       <p id="chat-error" class="chat-error" role="alert"></p>
     </div>
@@ -59,7 +55,7 @@ root.innerHTML = `
             </tr>
           </thead>
           <tbody id="db-tbody">
-            </tbody>
+          </tbody>
         </table>
       </div>
     </div>
@@ -69,8 +65,7 @@ root.innerHTML = `
 const messagesEl = document.querySelector("#messages");
 const formEl = document.querySelector("#chat-form");
 const inputEl = document.querySelector("#chat-input");
-const btnQuery = document.querySelector("#btn-query");
-const btnDatabase = document.querySelector("#btn-database");
+const sendBtn = document.querySelector("#chat-send");
 const errorEl = document.querySelector("#chat-error");
 const dbTbody = document.querySelector("#db-tbody");
 
@@ -81,11 +76,9 @@ function renderChat() {
     ...history.map((msg) => {
       const div = document.createElement("div");
       div.className = `msg msg-${msg.role}`;
-
       const rawText = msg.parts.map((p) => p.text ?? "").join("");
       const parsedHTML = marked.parse(rawText);
       div.innerHTML = DOMPurify.sanitize(parsedHTML);
-
       return div;
     }),
   );
@@ -98,7 +91,6 @@ async function fetchDatabase() {
     if (!res.ok) throw new Error("Failed to fetch database");
 
     const db = await res.json();
-
     dbTbody.innerHTML = "";
 
     if (db.length === 0) {
@@ -125,7 +117,6 @@ async function fetchDatabase() {
       `;
       dbTbody.appendChild(tr);
     });
-
     return db;
   } catch (error) {
     console.error("Database sync error:", error);
@@ -136,17 +127,13 @@ async function fetchDatabase() {
 formEl.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const submitter = event.submitter;
-  const mode = submitter ? submitter.value : "standard";
-
   const text = inputEl.value.trim();
   if (!text) return;
 
   errorEl.textContent = "";
   inputEl.value = "";
   inputEl.disabled = true;
-  btnQuery.disabled = true;
-  btnDatabase.disabled = true;
+  sendBtn.disabled = true;
 
   const sentHistory = history.map((m) => ({
     role: m.role,
@@ -162,38 +149,26 @@ formEl.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         history: sentHistory,
         new_message: text,
-        mode,
         localTime,
       }),
     });
 
-    if (!res.ok) {
-      throw new Error(`Request failed: ${res.status}`);
-    }
-
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
     const data = await res.json();
 
-    let replyText = "";
-    if (mode === "database") {
-      replyText = data.message || "No message returned.";
+    let replyText = data.message || "No message returned.";
 
-      if (data.status === "SUCCESS") {
-        const db = await fetchDatabase();
-
-        if (db && data.entryId) {
-          const entryExists = db.some((e) => e.id === data.entryId);
-          if (entryExists) {
-            replyText += `\n\n✅ *(Verified: Saved to Database as Entry #${data.entryId})*`;
-          } else {
-            replyText += `\n\n❌ **System Warning:** The database failed to save this entry. Please try again.`;
-          }
+    // If the AI autonomously decided to LOG, refresh the DB and verify.
+    if (data.action === "LOG") {
+      const db = await fetchDatabase();
+      if (db && data.entryId) {
+        const entryExists = db.some((e) => e.id === data.entryId);
+        if (entryExists) {
+          replyText += `\n\n✅ *(Verified: Saved to Database as Entry #${data.entryId})*`;
         } else {
-          replyText += `\n\n❌ **System Warning:** Could not verify database ID.`;
+          replyText += `\n\n❌ **System Warning:** The database failed to save this entry. Please try again.`;
         }
       }
-    } else {
-      // Handles the "query" mode
-      replyText = typeof data?.reply === "string" ? data.reply : "";
     }
 
     history.push({ role: "user", parts: [{ text }] });
@@ -204,8 +179,7 @@ formEl.addEventListener("submit", async (event) => {
     inputEl.value = text;
   } finally {
     inputEl.disabled = false;
-    btnQuery.disabled = false;
-    btnDatabase.disabled = false;
+    sendBtn.disabled = false;
     inputEl.focus();
   }
 });
