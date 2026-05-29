@@ -68,6 +68,7 @@ RUN npm ci --omit=dev
 
 # Copy server code and the built static assets
 COPY server.js ./server.js
+COPY logger.js ./logger.js
 COPY middleware ./middleware
 COPY routes ./routes
 COPY --from=build /app/dist ./dist

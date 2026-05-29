@@ -2,7 +2,7 @@ import express from 'express'
 import rateLimit from 'express-rate-limit'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Logging } from '@google-cloud/logging'
+import { GCP_PROJECT, log } from './logger.js'
 import { verifyAccessJwt } from './middleware/cloudflareAccess.js'
 import { createChatRouter } from './routes/chat.js'
 import { createClientConfigRouter } from './routes/clientConfig.js'
@@ -10,10 +10,6 @@ import { createClientConfigRouter } from './routes/clientConfig.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const port = Number(process.env.PORT) || 80
 const distDir = path.join(__dirname, 'dist')
-
-const GCP_PROJECT = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || ''
-const logging = new Logging({ projectId: GCP_PROJECT || undefined })
-const log = logging.logSync('app')
 
 const app = express()
 
