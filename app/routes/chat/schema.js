@@ -11,8 +11,8 @@ export const unifiedSchema = {
     action: {
       type: Type.STRING,
       description:
-        "Your determined intent: 'LOG' to save new food data, 'QUERY' to summarize/analyze past data, 'CHAT' for general conversation/help, 'NEEDS_INFO' if logging food but details are ambiguous.",
-      enum: ["LOG", "QUERY", "CHAT", "NEEDS_INFO"],
+        "Your determined intent: 'LOG' to save new food data, 'LOG_PROFILE' to save user settings/profile data (e.g. height, weight, job), 'QUERY' to summarize/analyze past data, 'CHAT' for general conversation/help, 'NEEDS_INFO' if logging food but details are ambiguous.",
+      enum: ["LOG", "LOG_PROFILE", "QUERY", "CHAT", "NEEDS_INFO"],
     },
     message: {
       type: Type.STRING,
@@ -42,6 +42,35 @@ export const unifiedSchema = {
         time: {
           type: Type.STRING,
           description: "Formatted Date and Time (e.g., 'YYYY-MM-DD HH:MM')",
+        },
+      },
+    },
+    profileData: {
+      type: Type.OBJECT,
+      description:
+        "Populate ONLY if action is 'LOG_PROFILE'. A snapshot of the user's settings/profile to save as fitness context. Omit any field the user did not provide.",
+      properties: {
+        height_cm: {
+          type: Type.NUMBER,
+          description: "User's height in centimeters",
+        },
+        weight_kg: {
+          type: Type.NUMBER,
+          description: "User's body weight in kilograms",
+        },
+        job: {
+          type: Type.STRING,
+          description: "The kind of job/work the user does",
+        },
+        notes: {
+          type: Type.STRING,
+          description:
+            "Any other free-form settings or context the user wants to save",
+        },
+        time: {
+          type: Type.STRING,
+          description:
+            "Formatted Date and Time for this snapshot (e.g., 'YYYY-MM-DD HH:MM'). Use a past date/time if the user is back-dating historical context, otherwise the provided local time.",
         },
       },
     },

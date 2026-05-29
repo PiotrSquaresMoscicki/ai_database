@@ -13,6 +13,8 @@ import { postChat } from "../api.js";
  * @param {HTMLElement} opts.messagesEl
  * @param {() => Promise<Array|null>} opts.refreshDatabase Re-fetches the ledger
  *   after a successful LOG and returns the data so the reply can be verified.
+ * @param {() => Promise<Array|null>} opts.refreshSettings Re-fetches the
+ *   user-settings ledger after a successful LOG_PROFILE.
  * @returns {{ render: () => void }}
  */
 export function createChatPanel({
@@ -22,6 +24,7 @@ export function createChatPanel({
   errorEl,
   messagesEl,
   refreshDatabase,
+  refreshSettings,
 }) {
   const history = [];
 
@@ -74,6 +77,17 @@ export function createChatPanel({
             replyText += `\n\n✅ *(Verified: Saved to Database as Entry #${data.entryId})*`;
           } else {
             replyText += `\n\n❌ **System Warning:** The database failed to save this entry. Please try again.`;
+          }
+        }
+      } else if (data.action === "LOG_PROFILE") {
+        // The AI saved user settings/profile data; refresh that table.
+        const profile = refreshSettings ? await refreshSettings() : null;
+        if (profile && data.entryId) {
+          const entryExists = profile.some((e) => e.id === data.entryId);
+          if (entryExists) {
+            replyText += `\n\n✅ *(Verified: Saved to User Settings as Entry #${data.entryId})*`;
+          } else {
+            replyText += `\n\n❌ **System Warning:** Failed to save your settings. Please try again.`;
           }
         }
       }

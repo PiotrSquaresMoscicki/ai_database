@@ -14,6 +14,16 @@ export async function getDatabase() {
 }
 
 /**
+ * Fetch the full user-settings/profile ledger.
+ * @returns {Promise<Array>} The list of profile entries.
+ */
+export async function getProfile() {
+  const res = await fetch("/api/profile");
+  if (!res.ok) throw new Error("Failed to fetch profile");
+  return res.json();
+}
+
+/**
  * Send a chat turn to the backend.
  * @param {{ history: Array, new_message: string, localTime: string }} payload
  * @returns {Promise<object>} The model's structured response.

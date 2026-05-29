@@ -40,6 +40,23 @@ export const APP_TEMPLATE = `
           </tbody>
         </table>
       </div>
+
+      <h1>User Settings</h1>
+      <div class="table-container">
+        <table id="settings-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Height (cm)</th>
+              <th>Weight (kg)</th>
+              <th>Job</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="settings-tbody">
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 `;

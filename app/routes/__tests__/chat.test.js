@@ -5,6 +5,7 @@ import {
   applySlidingWindow,
   createChatRouter,
   MAX_HISTORY_MESSAGES,
+  profileDatabase,
 } from "../chat.js";
 
 /** Builds a test app mounting the chat router with a stubbed GenAI client. */
@@ -165,5 +166,59 @@ describe("POST /api/chat", () => {
     expect(res.body.error).toBe("Upstream chat provider error");
     expect(JSON.stringify(res.body)).not.toMatch(/super secret detail/);
     errSpy.mockRestore();
+  });
+});
+
+describe("GET /api/profile + LOG_PROFILE", () => {
+  it("starts empty and persists a LOG_PROFILE entry the AI returns", async () => {
+    const profileData = {
+      height_cm: 180,
+      weight_kg: 82,
+      job: "software developer",
+      time: "2026-04-01 09:00",
+    };
+    const { app } = createTestApp({
+      sendMessage: () =>
+        ({ text: JSON.stringify({ action: "LOG_PROFILE", message: "Saved!", profileData }) }),
+    });
+
+    const before = await request(app).get("/api/profile");
+    expect(before.status).toBe(200);
+    expect(before.body).toEqual([]);
+
+    const res = await request(app)
+      .post("/api/chat")
+      .send({ history: [], new_message: "I'm 180cm and weigh 82kg, I'm a software developer" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe("LOG_PROFILE");
+    expect(typeof res.body.entryId).toBe("number");
+
+    const after = await request(app).get("/api/profile");
+    expect(after.status).toBe(200);
+    expect(after.body).toHaveLength(1);
+    expect(after.body[0].id).toBe(res.body.entryId);
+    expect(after.body[0].data).toEqual(profileData);
+    expect(after.body[0]).toHaveProperty("timestamp");
+
+    // Clean up the shared in-memory ledger so other tests stay isolated.
+    profileDatabase.length = 0;
+  });
+
+  it("downgrades to NEEDS_INFO when LOG_PROFILE has no data", async () => {
+    const { app } = createTestApp({
+      sendMessage: () =>
+        ({ text: JSON.stringify({ action: "LOG_PROFILE", message: "ok", profileData: {} }) }),
+    });
+
+    const res = await request(app)
+      .post("/api/chat")
+      .send({ history: [], new_message: "update my profile" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe("NEEDS_INFO");
+
+    const after = await request(app).get("/api/profile");
+    expect(after.body).toEqual([]);
   });
 });
