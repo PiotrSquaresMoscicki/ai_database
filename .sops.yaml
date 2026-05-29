@@ -1,0 +1,3 @@
+creation_rules:
+  - path_regex: \.enc\.json$
+    gcp_kms: projects/gamestudioinfra/locations/global/keyRings/web-srv-templ-sops-ring/cryptoKeys/web-srv-templ-sops-key

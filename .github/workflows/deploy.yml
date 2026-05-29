@@ -1,0 +1,115 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TARGET_WORKSPACE: ${{ github.event_name == 'pull_request' && 'stage' || 'prod' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      cloud_run_url: ${{ steps.tf_outputs.outputs.cloud_run_url }}
+      custom_domain: ${{ steps.tf_outputs.outputs.custom_domain }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Load Config from JSON
+        run: |
+          PROJECT_ID=$(jq -r .gcp.project_id config.json)
+          PROJECT_NUM=$(jq -r .gcp.project_number config.json)
+          BUCKET=$(jq -r .gcp.state_bucket config.json)
+          BOOTSTRAP_PROJECT_NAME=$(jq -r ".environments.prod.project_name" config.json)
+          SA="${BOOTSTRAP_PROJECT_NAME}-gha@${PROJECT_ID}.iam.gserviceaccount.com"
+
+          echo "GCP_PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
+          echo "GCS_BUCKET=$BUCKET" >> $GITHUB_ENV
+          echo "GCP_SA=$SA" >> $GITHUB_ENV
+          echo "APP_REPO=${BOOTSTRAP_PROJECT_NAME}-repo" >> $GITHUB_ENV
+          echo "WIF_PROVIDER=projects/$PROJECT_NUM/locations/global/workloadIdentityPools/${BOOTSTRAP_PROJECT_NAME}-pool/providers/${BOOTSTRAP_PROJECT_NAME}-prv" >> $GITHUB_ENV
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - name: Install Mozilla SOPS
+        run: |
+          curl -LO https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
+          sudo mv sops-v3.9.0.linux.amd64 /usr/local/bin/sops
+          sudo chmod +x /usr/local/bin/sops
+
+      - name: Decrypt Secrets
+        working-directory: ./infra
+        # Decrypting to .auto.tfvars.json ensures Terraform loads these secrets automatically for both prod and stage
+        run: sops -d secrets.enc.json > secrets.auto.tfvars.json
+
+      - name: Configure Docker Auth
+        run: gcloud auth configure-docker europe-central2-docker.pkg.dev
+
+      - name: Build and Push Docker Image
+        working-directory: ./app
+        run: |
+          IMAGE_URL="europe-central2-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.APP_REPO }}/app-${{ env.TARGET_WORKSPACE }}:${{ github.sha }}"
+          docker build -t $IMAGE_URL .
+          docker push $IMAGE_URL
+          echo "APP_IMAGE=$IMAGE_URL" >> $GITHUB_ENV
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ./infra
+        run: terraform init -backend-config="bucket=${{ env.GCS_BUCKET }}"
+
+      - name: Select or Create Workspace
+        working-directory: ./infra
+        run: terraform workspace select ${{ env.TARGET_WORKSPACE }} || terraform workspace new ${{ env.TARGET_WORKSPACE }}
+
+      - name: Terraform Apply
+        working-directory: ./infra
+        run: |
+          CF_ACCOUNT_ID=$(jq -r '.cloudflare.account_id' ../config.json)
+          CF_ZONE_ID=$(jq -r '.cloudflare.zone_id' ../config.json)
+          terraform apply \
+            -var="app_image=${{ env.APP_IMAGE }}" \
+            -var="cloudflare_account_id=${CF_ACCOUNT_ID}" \
+            -var="cloudflare_zone_id=${CF_ZONE_ID}" \
+            -auto-approve
+
+      - name: Export Terraform Outputs
+        id: tf_outputs
+        working-directory: ./infra
+        run: |
+          echo "cloud_run_url=$(terraform output -raw cloud_run_url)" >> "$GITHUB_OUTPUT"
+          echo "custom_domain=$(terraform output -raw custom_domain)" >> "$GITHUB_OUTPUT"
+
+  e2e-security:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run E2E Security Tests
+        env:
+          CLOUD_RUN_URL: ${{ needs.deploy.outputs.cloud_run_url }}
+          APP_CUSTOM_DOMAIN: ${{ needs.deploy.outputs.custom_domain }}
+        run: bash tests/e2e-security.sh

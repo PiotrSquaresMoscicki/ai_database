@@ -1,0 +1,27 @@
+{
+  "gcp": {
+    "project_id": "gamestudioinfra",
+    "project_number": "743511732787",
+    "state_bucket": "web-srv-templ-tfstate-7bb4dfd9",
+    "service_account": "github-actions@gamestudioinfra.iam.gserviceaccount.com"
+  },
+  "cloudflare": {
+    "account_id": "2e0ca5278824fd041174a959ab979c9b",
+    "zone_id": "466f698683768dfe2258525f2c085782",
+    "team_name": "squaressoftware"
+  },
+  "security": {
+    "allowed_google_emails": ["piotr.moscicki@squaressoftware.com"]
+  },
+  "github_repo": "PiotrSquaresMoscicki/web_service_template",
+  "environments": {
+    "prod": {
+      "project_name": "web-srv-templ",
+      "custom_domain": "web-service-template.squaressoftware.com"
+    },
+    "stage": {
+      "project_name": "web-srv-templ-stage",
+      "custom_domain": "stage-web-service-template.squaressoftware.com"
+    }
+  }
+}
