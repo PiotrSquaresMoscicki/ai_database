@@ -4,6 +4,7 @@ import { unifiedSchema } from "./chat/schema.js";
 import { UNIFIED_INSTRUCTION } from "./chat/instructions.js";
 import { MAX_HISTORY_MESSAGES, applySlidingWindow } from "./chat/history.js";
 import { nutritionDatabase, addEntry } from "./chat/store.js";
+import { profileDatabase, addProfileEntry } from "./chat/profileStore.js";
 import { CHAT_MODEL, defaultClientFactory } from "./chat/geminiClient.js";
 
 // Re-export the building blocks so existing importers (and tests) can keep
@@ -12,14 +13,16 @@ export { unifiedSchema } from "./chat/schema.js";
 export { UNIFIED_INSTRUCTION } from "./chat/instructions.js";
 export { MAX_HISTORY_MESSAGES, applySlidingWindow } from "./chat/history.js";
 export { nutritionDatabase } from "./chat/store.js";
+export { profileDatabase } from "./chat/profileStore.js";
 export { CHAT_MODEL, defaultClientFactory } from "./chat/geminiClient.js";
 
 /**
  * Build the Express router exposing the chat feature:
  *   GET  /api/database — returns the full nutrition ledger.
+ *   GET  /api/profile  — returns the full user-settings/profile ledger.
  *   POST /api/chat     — forwards a trimmed history + new message to Gemini,
- *                        persists any logged nutrition data, and returns the
- *                        model's structured response.
+ *                        persists any logged nutrition or profile data, and
+ *                        returns the model's structured response.
  */
 export function createChatRouter(opts = {}) {
   const clientFactory = opts.clientFactory ?? defaultClientFactory;
@@ -30,6 +33,10 @@ export function createChatRouter(opts = {}) {
 
   router.get("/api/database", (req, res) => {
     res.status(200).json(nutritionDatabase);
+  });
+
+  router.get("/api/profile", (req, res) => {
+    res.status(200).json(profileDatabase);
   });
 
   router.post("/api/chat", async (req, res) => {
@@ -44,7 +51,8 @@ export function createChatRouter(opts = {}) {
     const trimmedHistory = applySlidingWindow(history ?? [], maxHistory);
 
     const dbDump = JSON.stringify(nutritionDatabase);
-    const messageToAI = `[System Note: User's local time is ${localTime}. Current database: ${dbDump}]\n\nUser Input: ${newMessage}`;
+    const profileDump = JSON.stringify(profileDatabase);
+    const messageToAI = `[System Note: User's local time is ${localTime}. Current nutrition database: ${dbDump}. Current user settings/profile history: ${profileDump}]\n\nUser Input: ${newMessage}`;
 
     try {
       const ai = clientFactory();
@@ -89,6 +97,21 @@ export function createChatRouter(opts = {}) {
           // but you could change it to a generic translated error if you wanted!
           aiResponse.message =
             "System Error: I tried to log this meal but failed to attach the numerical data. Could you please submit that again?";
+        }
+      } else if (aiResponse.action === "LOG_PROFILE") {
+        const hasData =
+          aiResponse.profileData &&
+          Object.keys(aiResponse.profileData).length > 0;
+
+        if (hasData) {
+          aiResponse.entryId = addProfileEntry({
+            originalMessage: newMessage,
+            data: aiResponse.profileData,
+          });
+        } else {
+          aiResponse.action = "NEEDS_INFO";
+          aiResponse.message =
+            "System Error: I tried to save your settings but failed to attach any data. Could you please submit that again?";
         }
       }
 
