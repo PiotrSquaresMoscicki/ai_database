@@ -2,7 +2,7 @@
   "gcp": {
     "project_id": "gamestudioinfra",
     "project_number": "743511732787",
-    "state_bucket": "web-srv-templ-tfstate-7bb4dfd9",
+    "state_bucket": "ai-database-tfstate-679a921e",
     "service_account": "github-actions@gamestudioinfra.iam.gserviceaccount.com"
   },
   "cloudflare": {
@@ -13,15 +13,15 @@
   "security": {
     "allowed_google_emails": ["piotr.moscicki@squaressoftware.com"]
   },
-  "github_repo": "PiotrSquaresMoscicki/web_service_template",
+  "github_repo": "PiotrSquaresMoscicki/ai_database",
   "environments": {
     "prod": {
-      "project_name": "web-srv-templ",
-      "custom_domain": "web-service-template.squaressoftware.com"
+      "project_name": "ai-database",
+      "custom_domain": "ai-database.squaressoftware.com"
     },
     "stage": {
-      "project_name": "web-srv-templ-stage",
-      "custom_domain": "stage-web-service-template.squaressoftware.com"
+      "project_name": "ai-database-stage",
+      "custom_domain": "stage-ai-database.squaressoftware.com"
     }
   }
 }
