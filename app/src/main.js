@@ -87,8 +87,6 @@ function renderChat() {
       div.className = `msg msg-${msg.role}`;
 
       const rawText = msg.parts.map((p) => p.text ?? "").join("");
-
-      // Parse markdown (with highlight.js) and sanitize HTML to prevent XSS attacks
       const parsedHTML = marked.parse(rawText);
       div.innerHTML = DOMPurify.sanitize(parsedHTML);
 
@@ -98,7 +96,6 @@ function renderChat() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-// Fetches the in-memory array from the backend and renders the table
 async function fetchDatabase() {
   try {
     const res = await fetch("/api/database");
@@ -106,7 +103,7 @@ async function fetchDatabase() {
 
     const db = await res.json();
 
-    dbTbody.innerHTML = ""; // Clear existing rows
+    dbTbody.innerHTML = "";
 
     if (db.length === 0) {
       dbTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #888;">No entries yet. Start logging!</td></tr>`;
@@ -115,7 +112,6 @@ async function fetchDatabase() {
 
     db.forEach((entry) => {
       const tr = document.createElement("tr");
-      // Use the time parsed by AI, fallback to timestamp if missing
       const displayTime =
         entry.data.time ||
         new Date(entry.timestamp).toLocaleTimeString([], {
@@ -141,7 +137,6 @@ async function fetchDatabase() {
 formEl.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  // Find out which button triggered the submit
   const submitter = event.submitter;
   const mode = submitter ? submitter.value : "standard";
 
@@ -154,17 +149,25 @@ formEl.addEventListener("submit", async (event) => {
   btnStandard.disabled = true;
   btnDatabase.disabled = true;
 
-  // Snapshot the history we send so it matches what the backend processes.
   const sentHistory = history.map((m) => ({
     role: m.role,
     parts: m.parts.map((p) => ({ text: p.text })),
   }));
 
+  // Capture the precise local time the user clicked "Send"
+  const localTime = new Date().toLocaleString();
+
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ history: sentHistory, new_message: text, mode }),
+      // Include localTime in the payload
+      body: JSON.stringify({
+        history: sentHistory,
+        new_message: text,
+        mode,
+        localTime,
+      }),
     });
 
     if (!res.ok) {
@@ -173,26 +176,22 @@ formEl.addEventListener("submit", async (event) => {
 
     const data = await res.json();
 
-    // Extract the reply text based on the mode the backend processed
     let replyText = "";
     if (mode === "database") {
       replyText = data.message || "No message returned.";
-
-      // If the AI successfully parsed everything, it saved it to the DB!
       if (data.status === "SUCCESS") {
-        fetchDatabase(); // Refresh the table UI
+        fetchDatabase();
       }
     } else {
       replyText = typeof data?.reply === "string" ? data.reply : "";
     }
 
-    // Append both turns only after a successful response
     history.push({ role: "user", parts: [{ text }] });
     history.push({ role: "model", parts: [{ text: replyText }] });
     renderChat();
   } catch (err) {
     errorEl.textContent = "Failed to send message. Please try again.";
-    inputEl.value = text; // Restore the input so the user can retry without retyping.
+    inputEl.value = text;
   } finally {
     inputEl.disabled = false;
     btnStandard.disabled = false;
@@ -201,6 +200,5 @@ formEl.addEventListener("submit", async (event) => {
   }
 });
 
-// Initial render and database fetch on page load
 renderChat();
 fetchDatabase();
