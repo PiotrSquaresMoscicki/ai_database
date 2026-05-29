@@ -13,7 +13,6 @@ export const MAX_HISTORY_MESSAGES = 20;
 export const nutritionDatabase = [];
 let nextId = 1;
 
-// The AI now dictates its own action type alongside the message.
 export const unifiedSchema = {
   type: Type.OBJECT,
   properties: {
@@ -76,6 +75,9 @@ Analyze the user's input and determine the correct 'action' to take:
 3. ACTION: "CHAT" (General Help)
 - Goal: Answer general questions about nutrition, how to use the app, or casual conversation that does not require logging or querying the database.
 
+CRITICAL LANGUAGE RULE:
+You MUST detect the language of the user's input and write your 'message' response in that EXACT SAME language. For example, if the user writes in Polish, your response and analysis must be entirely in Polish. If Spanish, reply in Spanish.
+
 Use the 'message' field to speak directly to the user in a helpful, empathetic tone using Markdown formatting.
 `;
 
@@ -130,7 +132,6 @@ export function createChatRouter(opts = {}) {
 
     const trimmedHistory = applySlidingWindow(history ?? [], maxHistory);
 
-    // We ALWAYS inject the context so the AI can route the request intelligently
     const dbDump = JSON.stringify(nutritionDatabase);
     const messageToAI = `[System Note: User's local time is ${localTime}. Current database: ${dbDump}]\n\nUser Input: ${newMessage}`;
 
@@ -161,7 +162,6 @@ export function createChatRouter(opts = {}) {
         };
       }
 
-      // If the AI autonomously decided to LOG, handle the database push
       if (aiResponse.action === "LOG") {
         const hasData =
           aiResponse.nutritionData &&
@@ -177,8 +177,9 @@ export function createChatRouter(opts = {}) {
           });
           aiResponse.entryId = entryId;
         } else {
-          // Intercept hallucination where it wants to log but forgot the data
           aiResponse.action = "NEEDS_INFO";
+          // We leave this fallback error in English since it's a backend system error,
+          // but you could change it to a generic translated error if you wanted!
           aiResponse.message =
             "System Error: I tried to log this meal but failed to attach the numerical data. Could you please submit that again?";
         }
