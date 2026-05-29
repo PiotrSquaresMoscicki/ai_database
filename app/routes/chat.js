@@ -15,10 +15,6 @@ export const SYSTEM_INSTRUCTION =
 export const CHAT_MODEL = "gemini-2.5-flash";
 export const MAX_HISTORY_MESSAGES = 20;
 
-// ==========================================
-// MVP NUTRITION DATABASE & AI SCHEMA CONFIG
-// ==========================================
-
 export const nutritionDatabase = [];
 let nextId = 1;
 
@@ -62,7 +58,8 @@ export const nutritionSchema = {
       },
     },
   },
-  required: ["status", "message"],
+  // FORCING the AI to always output the nutritionData object, preventing silent omissions
+  required: ["status", "message", "nutritionData"],
 };
 
 export const DATABASE_INSTRUCTION = `
@@ -86,8 +83,6 @@ WHEN TO ASK FOR CLARIFICATION (Set status to 'NEEDS_INFO'):
 
 When you successfully infer the data, set status to 'SUCCESS'. Use the 'message' field to tell the user exactly what you inferred so they can verify your math (e.g., "Logged one butter sandwich on white bread: approx 30g carbs, 5g protein, 10g fat.").
 `;
-
-// ==========================================
 
 export function applySlidingWindow(history, max = MAX_HISTORY_MESSAGES) {
   if (!Array.isArray(history)) return [];
@@ -157,8 +152,6 @@ export function createChatRouter(opts = {}) {
     const trimmedHistory = applySlidingWindow(history ?? [], maxHistory);
     const isDbMode = mode === "database";
 
-    // Inject the local time silently into the AI's prompt block without modifying
-    // the 'newMessage' variable, so we save the clean version to the database later.
     const messageToAI = localTime
       ? `[System Note: User's current local time is ${localTime}]\n\n${newMessage}`
       : newMessage;
@@ -180,7 +173,6 @@ export function createChatRouter(opts = {}) {
         config,
       });
 
-      // Pass the concatenated time+message to the AI
       const response = await chat.sendMessage({ message: messageToAI });
 
       if (isDbMode) {
@@ -196,13 +188,28 @@ export function createChatRouter(opts = {}) {
           };
         }
 
-        if (aiResponse.status === "SUCCESS" && aiResponse.nutritionData) {
-          nutritionDatabase.push({
-            id: nextId++,
-            originalMessage: newMessage, // We save the clean message, not the time-injected one
-            timestamp: new Date().toISOString(),
-            data: aiResponse.nutritionData,
-          });
+        // Defensive check: Even if AI says SUCCESS, verify it actually generated the data object
+        if (aiResponse.status === "SUCCESS") {
+          const hasData =
+            aiResponse.nutritionData &&
+            Object.keys(aiResponse.nutritionData).length > 0;
+
+          if (hasData) {
+            const entryId = nextId++;
+            nutritionDatabase.push({
+              id: entryId,
+              originalMessage: newMessage,
+              timestamp: new Date().toISOString(),
+              data: aiResponse.nutritionData,
+            });
+            // Attach the ID so the frontend can verify it
+            aiResponse.entryId = entryId;
+          } else {
+            // Intercept the hallucination
+            aiResponse.status = "NEEDS_INFO";
+            aiResponse.message =
+              "System Error: I processed the meal but failed to attach the numerical data. Could you please submit that again?";
+          }
         }
 
         res.status(200).json(aiResponse);

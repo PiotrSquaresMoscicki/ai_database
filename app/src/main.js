@@ -6,7 +6,6 @@ import { initTelemetry } from "./telemetry.js";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
-// Configure marked to use highlight.js for code blocks
 marked.setOptions({
   highlight: function (code, lang) {
     const language = hljs.getLanguage(lang) ? lang : "plaintext";
@@ -20,8 +19,6 @@ import("vconsole").then((module) => {
   new VConsole();
 });
 
-// Wire global error / unhandledrejection handlers to GCP Error Reporting
-// before any other code runs so we capture early initialization failures.
 initTelemetry();
 
 const root = document.querySelector("#app");
@@ -77,7 +74,6 @@ const btnDatabase = document.querySelector("#btn-database");
 const errorEl = document.querySelector("#chat-error");
 const dbTbody = document.querySelector("#db-tbody");
 
-/** @type {Array<{role: 'user' | 'model', parts: Array<{text: string}>}>} */
 const history = [];
 
 function renderChat() {
@@ -96,6 +92,7 @@ function renderChat() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+// Updated to return the parsed database array so we can inspect it
 async function fetchDatabase() {
   try {
     const res = await fetch("/api/database");
@@ -107,7 +104,7 @@ async function fetchDatabase() {
 
     if (db.length === 0) {
       dbTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #888;">No entries yet. Start logging!</td></tr>`;
-      return;
+      return db;
     }
 
     db.forEach((entry) => {
@@ -129,8 +126,11 @@ async function fetchDatabase() {
       `;
       dbTbody.appendChild(tr);
     });
+
+    return db;
   } catch (error) {
     console.error("Database sync error:", error);
+    return null;
   }
 }
 
@@ -154,14 +154,12 @@ formEl.addEventListener("submit", async (event) => {
     parts: m.parts.map((p) => ({ text: p.text })),
   }));
 
-  // Capture the precise local time the user clicked "Send"
   const localTime = new Date().toLocaleString();
 
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // Include localTime in the payload
       body: JSON.stringify({
         history: sentHistory,
         new_message: text,
@@ -179,8 +177,21 @@ formEl.addEventListener("submit", async (event) => {
     let replyText = "";
     if (mode === "database") {
       replyText = data.message || "No message returned.";
+
       if (data.status === "SUCCESS") {
-        fetchDatabase();
+        // Await the fetch so we can verify the ID actually made it to the client
+        const db = await fetchDatabase();
+
+        if (db && data.entryId) {
+          const entryExists = db.some((e) => e.id === data.entryId);
+          if (entryExists) {
+            replyText += `\n\n✅ *(Verified: Saved to Database as Entry #${data.entryId})*`;
+          } else {
+            replyText += `\n\n❌ **System Warning:** The database failed to save this entry. Please try again.`;
+          }
+        } else {
+          replyText += `\n\n❌ **System Warning:** Could not verify database ID.`;
+        }
       }
     } else {
       replyText = typeof data?.reply === "string" ? data.reply : "";
