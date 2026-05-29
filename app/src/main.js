@@ -37,7 +37,7 @@ root.innerHTML = `
           aria-label="Message"
         />
         <div class="button-group">
-          <button id="btn-standard" type="submit" value="standard" class="btn">Standard Chat</button>
+          <button id="btn-query" type="submit" value="query" class="btn">Query DB</button>
           <button id="btn-database" type="submit" value="database" class="btn btn-primary">Log to DB</button>
         </div>
       </form>
@@ -69,7 +69,7 @@ root.innerHTML = `
 const messagesEl = document.querySelector("#messages");
 const formEl = document.querySelector("#chat-form");
 const inputEl = document.querySelector("#chat-input");
-const btnStandard = document.querySelector("#btn-standard");
+const btnQuery = document.querySelector("#btn-query");
 const btnDatabase = document.querySelector("#btn-database");
 const errorEl = document.querySelector("#chat-error");
 const dbTbody = document.querySelector("#db-tbody");
@@ -92,7 +92,6 @@ function renderChat() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-// Updated to return the parsed database array so we can inspect it
 async function fetchDatabase() {
   try {
     const res = await fetch("/api/database");
@@ -146,7 +145,7 @@ formEl.addEventListener("submit", async (event) => {
   errorEl.textContent = "";
   inputEl.value = "";
   inputEl.disabled = true;
-  btnStandard.disabled = true;
+  btnQuery.disabled = true;
   btnDatabase.disabled = true;
 
   const sentHistory = history.map((m) => ({
@@ -179,7 +178,6 @@ formEl.addEventListener("submit", async (event) => {
       replyText = data.message || "No message returned.";
 
       if (data.status === "SUCCESS") {
-        // Await the fetch so we can verify the ID actually made it to the client
         const db = await fetchDatabase();
 
         if (db && data.entryId) {
@@ -194,6 +192,7 @@ formEl.addEventListener("submit", async (event) => {
         }
       }
     } else {
+      // Handles the "query" mode
       replyText = typeof data?.reply === "string" ? data.reply : "";
     }
 
@@ -205,7 +204,7 @@ formEl.addEventListener("submit", async (event) => {
     inputEl.value = text;
   } finally {
     inputEl.disabled = false;
-    btnStandard.disabled = false;
+    btnQuery.disabled = false;
     btnDatabase.disabled = false;
     inputEl.focus();
   }

@@ -58,7 +58,6 @@ export const nutritionSchema = {
       },
     },
   },
-  // FORCING the AI to always output the nutritionData object, preventing silent omissions
   required: ["status", "message", "nutritionData"],
 };
 
@@ -67,21 +66,39 @@ You are an expert nutrition and hydration logging assistant. Your primary goal i
 
 CRITICAL RULES FOR INFERENCE:
 1. NEVER ask the user for macronutrients (carbs, proteins, fats) or water volume. You must estimate them yourself based on the food/drink provided.
-2. Infer volumes and weights from standard colloquialisms: "a glass" = ~250ml, "a mug" = ~350ml, "a slice of bread" = ~30g, "a medium apple" = ~180g, "a bowl" = ~300g, etc.
+2. Infer volumes and weights from standard colloquialisms: "a glass" = ~250ml, "a slice of bread" = ~30g, "a medium apple" = ~180g, "a bowl" = ~300g, etc.
 3. Calculate the total macros for the meal by summing the estimated ingredients. 
 4. If a food item doesn't contain a macro (e.g., water has 0 carbs), output 0 for that field.
 
 TIME METADATA RULES:
 - The user's exact current local date and time will be provided in brackets at the beginning of their message.
-- IF the user explicitly mentions a time or relative time in their text (e.g., "for breakfast yesterday", "at 2pm", "10 minutes ago"), use the provided local time as a baseline to calculate and log the EXACT explicitly requested time.
+- IF the user explicitly mentions a time, use the provided local time as a baseline to calculate and log the EXACT explicitly requested time.
 - IF the user does NOT explicitly mention a time, default to using the provided local time.
 - Format the final output 'time' field as "YYYY-MM-DD HH:MM".
 
 WHEN TO ASK FOR CLARIFICATION (Set status to 'NEEDS_INFO'):
 1. Ambiguous Food Identity: If the user says "I ate a sandwich", you don't know the macros. Ask what kind of bread and what the fillings were.
-2. Missing Portion Scale: If the user says "I ate chicken and rice" without any hints of scale, ask for a rough size (e.g., "Was it a cup of rice and a whole chicken breast?").
+2. Missing Portion Scale: If the user says "I ate chicken and rice" without any hints of scale, ask for a rough size.
 
-When you successfully infer the data, set status to 'SUCCESS'. Use the 'message' field to tell the user exactly what you inferred so they can verify your math (e.g., "Logged one butter sandwich on white bread: approx 30g carbs, 5g protein, 10g fat.").
+When you successfully infer the data, set status to 'SUCCESS'. Use the 'message' field to tell the user exactly what you inferred so they can verify your math.
+`;
+
+export const QUERY_INSTRUCTION = `
+You are an empathetic, expert nutrition coach and data analyst. The user is asking you to analyze their food log. 
+Attached to their message in a [System Note] will be their current local time, and a JSON dump of their entire nutrition database.
+
+YOUR GOAL:
+1. Filter the provided database for entries that match "today" based on their local time.
+2. Calculate their daily totals: Total Water, Carbs, Protein, and Fats.
+3. Calculate their estimated Total Calories (Formula: Carbs*4 + Protein*4 + Fats*9).
+4. Evaluate their day. Are they eating too many carbs? Not enough protein? Severely dehydrated? Be honest but encouraging.
+
+TIME-AWARE ADVICE:
+Pay close attention to their local time. 
+- If it is late at night (e.g., past 8 PM) and they are hungry, suggest light, sleep-friendly snacks (like cottage cheese, a small handful of almonds, or chamomile tea). If they have already eaten a lot, gently advise them that it is too late for heavy food and they should prioritize hydration and sleep.
+- If it is early/mid-day, suggest what types of meals they should target for the rest of the day to balance their macros.
+
+Keep your response cleanly formatted using Markdown. Use bullet points for the summary data so it's easy to read. Do not output raw JSON, talk to them like a human coach.
 `;
 
 export function applySlidingWindow(history, max = MAX_HISTORY_MESSAGES) {
@@ -150,19 +167,31 @@ export function createChatRouter(opts = {}) {
     }
 
     const trimmedHistory = applySlidingWindow(history ?? [], maxHistory);
-    const isDbMode = mode === "database";
 
-    const messageToAI = localTime
-      ? `[System Note: User's current local time is ${localTime}]\n\n${newMessage}`
-      : newMessage;
+    const isDbMode = mode === "database";
+    const isQueryMode = mode === "query";
+
+    // Determine the correct system prompt based on the mode
+    let currentSystemInstruction = opts.systemInstruction ?? SYSTEM_INSTRUCTION;
+    if (isDbMode) currentSystemInstruction = DATABASE_INSTRUCTION;
+    if (isQueryMode) currentSystemInstruction = QUERY_INSTRUCTION;
+
+    // Inject data dynamically based on mode
+    let messageToAI = newMessage;
+    if (isDbMode) {
+      messageToAI = `[System Note: User's current local time is ${localTime}]\n\n${newMessage}`;
+    } else if (isQueryMode) {
+      // Dump the entire in-memory array as a JSON string for the AI to analyze
+      const dbDump = JSON.stringify(nutritionDatabase);
+      messageToAI = `[System Note: User's current local time is ${localTime}. Here is the complete JSON database of all their logged meals: ${dbDump}]\n\n${newMessage}`;
+    }
 
     try {
       const ai = clientFactory();
 
       const config = {
-        systemInstruction: isDbMode
-          ? DATABASE_INSTRUCTION
-          : (opts.systemInstruction ?? SYSTEM_INSTRUCTION),
+        systemInstruction: currentSystemInstruction,
+        // Only force JSON if we are actively trying to save to the database
         responseMimeType: isDbMode ? "application/json" : "text/plain",
         responseSchema: isDbMode ? nutritionSchema : undefined,
       };
@@ -188,7 +217,6 @@ export function createChatRouter(opts = {}) {
           };
         }
 
-        // Defensive check: Even if AI says SUCCESS, verify it actually generated the data object
         if (aiResponse.status === "SUCCESS") {
           const hasData =
             aiResponse.nutritionData &&
@@ -202,10 +230,8 @@ export function createChatRouter(opts = {}) {
               timestamp: new Date().toISOString(),
               data: aiResponse.nutritionData,
             });
-            // Attach the ID so the frontend can verify it
             aiResponse.entryId = entryId;
           } else {
-            // Intercept the hallucination
             aiResponse.status = "NEEDS_INFO";
             aiResponse.message =
               "System Error: I processed the meal but failed to attach the numerical data. Could you please submit that again?";
@@ -214,6 +240,7 @@ export function createChatRouter(opts = {}) {
 
         res.status(200).json(aiResponse);
       } else {
+        // This handles BOTH "standard" chat and the new "query" chat.
         const text = typeof response?.text === "string" ? response.text : "";
         res.status(200).json({ reply: text });
       }
